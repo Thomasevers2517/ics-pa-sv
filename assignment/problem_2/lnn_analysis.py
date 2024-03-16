@@ -29,24 +29,38 @@ def plot_dataset_state_distribution_polar_scatter(
             - th_d_next_ss: Array of shape (N, 2) containing the next link angular velocities of the double pendulum. [rad/s]
         filepath: Path to save the plot.
     """
+    
     fig = plt.figure(num="Training set distribution", figsize=(9, 4.5))
     ax1 = plt.subplot(121, projection="polar")
     ax2 = plt.subplot(122, projection="polar")
-
+    th_d1= (dataset["th_d_next_ss"][:, 0] - dataset["th_d_curr_ss"][:, 0]) / dt
     c1 = ax1.scatter(
         dataset["th_curr_ss"][:, 0],
         dataset["th_d_curr_ss"][:, 0],
-        c=(dataset["th_d_next_ss"][:, 0] - dataset["th_d_curr_ss"][:, 0]) / dt,
+        c=th_d1,
         s=rcParams["lines.markersize"] ** 2 / 6,
         cmap="coolwarm",
+        vmin=jnp.min(th_d1)/4,vmax=jnp.max(th_d1)/4
     )
     fig.colorbar(c1, ax=ax1, shrink=0.6, label=r"$\ddot{\theta}_1$ [rad/s^2]")
+    
+    th_d2 = (dataset["th_d_next_ss"][:, 1] - dataset["th_d_curr_ss"][:, 1]) / dt
+    print(th_d2)
+    min_index = jnp.argmin(th_d2)
+    max_index = jnp.argmax(th_d2)
+    print("Min index:", min_index)
+    print("Max index:", max_index)
+    print("Min value:", th_d2[min_index])
+    print("Max value:", th_d2[max_index])
+    print("Values around min:", th_d2[min_index-3:min_index+3])
+    print("Values around max:", th_d2[max_index-3:max_index+3])
     c2 = ax2.scatter(
         dataset["th_curr_ss"][:, 1],
         dataset["th_d_curr_ss"][:, 1],
-        c=(dataset["th_d_next_ss"][:, 1] - dataset["th_d_curr_ss"][:, 1]) / dt,
+        c=th_d2,
         s=rcParams["lines.markersize"] ** 2 / 6,
         cmap="coolwarm",
+        vmin=jnp.min(th_d2)/4,vmax=jnp.max(th_d2)/4
     )
     fig.colorbar(c2, ax=ax2, shrink=0.6, label=r"$\ddot{\theta}_2$ [rad/s^2]")
 
@@ -60,6 +74,9 @@ def plot_dataset_state_distribution_polar_scatter(
     ax2.text(
         0, ax2.get_rmax() / 2.0, r"$\dot{\theta}_2$ [rad/s]", ha="center", va="center"
     )
+    
+    # ax1.set_ylim(0, jnp.max(dataset["th_d_curr_ss"][:, 0]))
+    # ax2.set_ylim(0, jnp.max(dataset["th_d_curr_ss"][:, 1]))
 
     plt.tight_layout()
 
@@ -220,7 +237,9 @@ def plot_dataset_generalized_torque_distribution_violin(
         dataset["th_curr_ss"], dataset["th_d_curr_ss"]
     )
     coriolis_forces_ss = jnp.einsum("ijk,ik->ij", C_ss, dataset["th_d_curr_ss"])
-
+    
+    print("Coriolis forces:", coriolis_forces_ss )
+    
     plt.figure(num="Distribution of generalized torques")
     data = {
         r"Coriolis $C(\theta, \dot{\theta}) \, \dot{\theta}$": jnp.linalg.norm(
@@ -229,7 +248,13 @@ def plot_dataset_generalized_torque_distribution_violin(
         r"Gravity $G(\theta)$": jnp.linalg.norm(G_ss, axis=-1),
         r"External $\tau$": jnp.linalg.norm(dataset["tau_ss"], axis=-1),
     }
-    ax = sns.violinplot(data=data, density_norm="count", legend=False)
+    import pandas as pd
+    dataPD = pd.DataFrame(data)
+    max_index = dataPD[r"Coriolis $C(\theta, \dot{\theta}) \, \dot{\theta}$"].idxmax()
+    print("Maximum Coriolis force:", dataPD[r"Coriolis $C(\theta, \dot{\theta}) \, \dot{\theta}$"].max())
+    print("Values around maximum index:")
+    print(dataPD.iloc[max_index-20:max_index+20].to_string(index=False))
+    ax = sns.violinplot(data=dataPD, density_norm="count", legend=False)
     plt.ylabel(r"$\ell_2$ norm of torques [Nm]")
     plt.tight_layout()
 
@@ -241,6 +266,7 @@ def plot_lnn_training_convergence(
     val_loss_history: Array,
     train_metrics_history: List[Dict[str, Array]],
     val_metrics_history: List[Dict[str, Array]],
+    train_loss_history: Array,
     show: bool = True,
     filepath: str = None,
 ):
@@ -255,7 +281,7 @@ def plot_lnn_training_convergence(
     """
     fig, axes = plt.subplots(
         nrows=1,
-        ncols=2,
+        ncols=3,
         num="Lagrangian neural network training convergence",
         figsize=(9, 3.5),
     )
@@ -283,6 +309,18 @@ def plot_lnn_training_convergence(
     axes[1].set_xlabel("Epochs")
     axes[1].set_ylabel(
         r"Validation loss: MSE of $\dot{\theta}_{k+1}$ $[\frac{\mathrm{rad}^2}{\mathrm{s}^2}]$"
+    )
+    
+    axes[2].plot(
+        jnp.arange(train_loss_history.shape[0]),
+        train_loss_history,
+        linewidth=2,
+    )
+
+    axes[2].set_yscale("log")
+    axes[2].set_xlabel("Epochs")
+    axes[2].set_ylabel(
+        r"Trainingloss: MSE of $\dot{\theta}_{k+1}$ $[\frac{\mathrm{rad}^2}{\mathrm{s}^2}]$"
     )
 
     for ax in axes.flatten():
